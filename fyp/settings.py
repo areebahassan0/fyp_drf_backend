@@ -130,10 +130,9 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # settings.py
 from datetime import timedelta
-
-STRIPE_SECRET_KEY = 'sk_test_51RKzBiR6bEOqH2pPXyA1ViJFIO45kM9SYv2w5LUJmiTrnOaCDX5sPq9UrjR8RhdifpBXWUdXojAnd70DNttIWbOe00T3g4wLEN'
-STRIPE_PUBLISHABLE_KEY = 'your-publishable-key-herepk_test_51RKzBiR6bEOqH2pPcJ7gAOPE0Whdh01FC54WDKaIpV0Jr7t7IrTfO9ORoEK3o99atsm1dE45FDbwtBy8fiInpT4k00aJXk2WvF'
-
+import os
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
+STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY")
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=5),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=10),
