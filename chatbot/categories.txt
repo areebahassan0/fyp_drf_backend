@@ -1,0 +1,65 @@
+﻿MAIN CATEGORY: Billing
+DESCRIPTION: Issues related to electricity bills, payments, and charges
+SUBCATEGORY: Incorrect Bill Amount
+DESCRIPTION: When the billed amount doesn't match expected charges
+ REDIRECT_URL: /complaints/billing/incorrect-amount FIELDS:
+ COMMON_INDICATORS: wrong bill, incorrect charges, bill too high, overcharged, wrong amount, billing error
+SUBCATEGORY: Meter Issue
+DESCRIPTION: Problems with electricity meter functioning or tampering 
+REDIRECT_URL: /complaints/billing/meter-issue FIELDS:
+COMMON_INDICATORS: meter problem, meter damaged, meter tampered, meter not working, theft issue
+SUBCATEGORY: Incorrect Meter Reading
+DESCRIPTION: When the meter reading on bill doesn't match actual meter reading REDIRECT_URL: /complaints/billing/incorrect-reading
+COMMON_INDICATORS: wrong reading, incorrect reading, meter misread, reading error, wrong meter reading
+SUBCATEGORY: Unexplained Charges
+DESCRIPTION: Surcharges or additional fees that are not clearly explained 
+REDIRECT_URL: /complaints/billing/unexplained-charges FIELDS:
+COMMON_INDICATORS: extra charges, unknown charges, mysterious fees, surcharge, tax issue, unexplained fees
+SUBCATEGORY: Duplicate Bills
+DESCRIPTION: Receiving multiple bills for the same billing period 
+REDIRECT_URL: /complaints/billing/duplicate-bills FIELDS:
+COMMON_INDICATORS: two bills, duplicate bill, same bill twice, multiple bills, billed twice
+SUBCATEGORY: Unresolved Arrears
+DESCRIPTION: Previous payments not reflected in current bill 
+REDIRECT_URL: /complaints/billing/unresolved-arrears
+COMMON_INDICATORS: old bill, arrears, previous payment, still showing due, paid already
+SUBCATEGORY: Payment Not Reflected
+DESCRIPTION: Payment made but not showing in account 
+REDIRECT_URL: /complaints/billing/payment-not-reflected 
+COMMON_INDICATORS: payment not showing, paid but still due, payment missing, transaction not recorded
+SUBCATEGORY: Non-Receipt of Bill
+DESCRIPTION: Not receiving electricity bill on time or at all REDIRECT_URL: /complaints/billing/non-receipt FIELDS:
+* Expected Billing Period
+* Last Bill Received (Month/Year)
+* Preferred Delivery Method (Mail, Email, SMS)
+* Customer Address/Email COMMON_INDICATORS: no bill, missing bill, didn't receive bill, bill not delivered, never got bill
+SUBCATEGORY: Paid On Time But Charged Late Fee
+DESCRIPTION: Late payment charges despite on-time payment REDIRECT_URL: /complaints/billing/wrongful-late-fee FIELDS:
+COMMON_INDICATORS: wrong late fee, paid on time, late charge error, timely payment, still charged late
+SUBCATEGORY: Late Fee Dispute
+DESCRIPTION: Complaints about late fees being applied REDIRECT_URL: /complaints/billing/late-fee-dispute FIELDS:
+COMMON_INDICATORS: unfair late fee, late fee too high, excessive charge, unreasonable fee
+MAIN CATEGORY: Loadshedding
+DESCRIPTION: Issues related to power outages, scheduled cuts, and service quality
+SUBCATEGORY: Report an Outage
+DESCRIPTION: Complete power outage without prior notice 
+REDIRECT_URL: /complaints/loadshedding/report-outag:
+COMMON_INDICATORS: no power, electricity out, blackout, outage, no supply, power gone
+SUBCATEGORY: Frequent Loadshedding
+DESCRIPTION: Multiple power outages occurring within same day 
+REDIRECT_URL: /complaints/loadshedding/frequent-cuts:
+COMMON_INDICATORS: too many outages, frequent cuts, multiple blackouts, repeated loadshedding, constant outages
+SUBCATEGORY: Incorrect Loadshedding Schedule
+DESCRIPTION: Power cuts not following published schedule 
+REDIRECT_URL: /complaints/loadshedding/schedule-issue FIELDS:
+COMMON_INDICATORS: wrong schedule, unannounced loadshedding, schedule not followed, no warning, unexpected outage
+SUBCATEGORY: Voltage Issues
+DESCRIPTION: Problems with electricity voltage affecting appliances REDIRECT_URL: /complaints/loadshedding/voltage-issues 
+COMMON_INDICATORS: voltage problem, low voltage, high voltage, fluctuation, appliance damage, dim lights
+SUBCATEGORY: Phase Failure
+DESCRIPTION: Issues with electricity phases 
+REDIRECT_URL: /complaints/loadshedding/phase-failure 
+COMMON_INDICATORS: phase issue, phase gone, partial power, single phase, no phase, phase problem
+MAIN CATEGORY: Other
+DESCRIPTION: Issues that are besides billing and loadshedding can be catered here. 
+REDIRECT_URL: /complaints/loadshedding/other
