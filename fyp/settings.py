@@ -20,7 +20,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-eh9a0hf-wndzf!cusx6d+!5@tv%kryx!2tr78@)71iahz@a0h1'
+SECRET_KEY = os.getenv('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -144,7 +144,7 @@ from rest_framework_simplejwt.settings import api_settings
 # settings.py
 api_settings.USER_ID_FIELD = 'consumer_no'  # Replace 'consumer_no' with your actual primary key
 api_settings.USER_ID_CLAIM = 'consumer_no'
-MISTRAL_API_KEY= 'FSyxnPcai6BQKa8yfxyU7MgEvdEDKNn4'
+MISTRAL_API_KEY= os.getenv('MISTRAL_API_KEY')
 # EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 # EMAIL_HOST = 'sandbox.smtp.mailtrap.io'  # Host provided by Mailtrap
 # EMAIL_PORT = 587  # You can also try other ports: 25, 465, 2525
