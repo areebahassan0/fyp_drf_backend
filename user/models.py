@@ -38,7 +38,6 @@ class User(AbstractBaseUser):
     cnic = models.CharField(max_length=13, null=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
     billing_type_choices = [
         (1, 'Installments-10'),
         (2, 'Installments-15'),
