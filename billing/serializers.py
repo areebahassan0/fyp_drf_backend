@@ -1,13 +1,49 @@
 from rest_framework import serializers
 from .models import (
     Payments, Billing, YearlyPayments, Package, 
-    BillingMethod, PaymentMethod, UserInstallments
+    BillingMethod, PaymentMethod, UserInstallments,
+    PackageUsage, DailyUsage, PackageOverage
 )
+from django.utils import timezone
 
 class PackageSerializer(serializers.ModelSerializer):
     class Meta:
         model = Package
-        fields = ['name', 'description', 'price', 'voltage_included', 'duration_months', 'is_active']
+        fields = ['id', 'name', 'description', 'price', 'voltage_included', 
+                 'duration_months', 'overage_rate']
+
+class PackageUsageSerializer(serializers.ModelSerializer):
+    package_details = PackageSerializer(source='package', read_only=True)
+    remaining_kwh = serializers.SerializerMethodField()
+    overage_amount = serializers.SerializerMethodField()
+    days_remaining = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PackageUsage
+        fields = ['id', 'package', 'package_details', 'start_date', 'end_date', 
+                 'total_usage', 'is_active', 'remaining_kwh', 'overage_amount',
+                 'days_remaining']
+
+    def get_remaining_kwh(self, obj):
+        return obj.get_remaining_kwh()
+
+    def get_overage_amount(self, obj):
+        return obj.get_overage_amount()
+
+    def get_days_remaining(self, obj):
+        if obj.is_active:
+            return (obj.end_date - timezone.now().date()).days
+        return 0
+
+class DailyUsageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DailyUsage
+        fields = ['id', 'user', 'date', 'usage_kwh', 'package_usage']
+
+class PackageOverageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PackageOverage
+        fields = ['id', 'package_usage', 'amount', 'date', 'is_paid', 'bill']
 
 class PaymentMethodSerializer(serializers.ModelSerializer):
     class Meta:
@@ -104,3 +140,33 @@ class ProcessPaymentSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
     payment_method_id = serializers.IntegerField()
     remarks = serializers.CharField(required=False, allow_blank=True)
+
+class SubscribeToPackageSerializer(serializers.Serializer):
+    package_id = serializers.IntegerField()
+    payment_method_id = serializers.IntegerField()
+
+class PackageManagementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Package
+        fields = ['id', 'name', 'description', 'price', 'voltage_included', 
+                 'duration_months', 'overage_rate', 'is_active']
+        
+    def validate_price(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Price must be greater than 0")
+        return value
+    
+    def validate_voltage_included(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Voltage included must be greater than 0")
+        return value
+    
+    def validate_duration_months(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Duration must be greater than 0")
+        return value
+    
+    def validate_overage_rate(self, value):
+        if value < 0:
+            raise serializers.ValidationError("Overage rate cannot be negative")
+        return value

@@ -7,12 +7,75 @@ class Package(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    voltage_included = models.IntegerField()
-    duration_months = models.IntegerField()
+    voltage_included = models.IntegerField(help_text="Total kWh included in the package")
+    duration_months = models.IntegerField(help_text="Duration of package validity in months")
     is_active = models.BooleanField(default=True)
+    overage_rate = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0.00,
+        help_text="Rate charged per kWh when exceeding the limit"
+    )
 
     def __str__(self):
-        return self.name
+        return f"{self.name} - {self.voltage_included}kWh - ${self.price}"
+
+    def get_overage_amount(self, usage_kwh):
+        """Calculate overage amount if usage exceeds the limit"""
+        if usage_kwh > self.voltage_included:
+            return (usage_kwh - self.voltage_included) * self.overage_rate
+        return 0
+
+class PackageUsage(models.Model):
+    user = models.ForeignKey(AUTH_USER_MODEL, on_delete=models.CASCADE)
+    package = models.ForeignKey(Package, on_delete=models.CASCADE)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    total_usage = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    is_active = models.BooleanField(default=True)
+    last_notification_sent = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.user} - {self.package.name}"
+
+    def get_remaining_kwh(self):
+        """Get remaining kWh in the package"""
+        return max(0, self.package.voltage_included - self.total_usage)
+
+    def get_overage_amount(self):
+        """Get current overage amount if any"""
+        return self.package.get_overage_amount(self.total_usage)
+
+    def get_usage_percentage(self):
+        return (self.total_usage / self.package.voltage_included) * 100
+
+    def should_notify(self):
+        if not self.last_notification_sent or (timezone.now() - self.last_notification_sent).days >= 1:
+            usage_percentage = self.get_usage_percentage()
+            return usage_percentage >= self.package.warning_threshold
+        return False
+
+class DailyUsage(models.Model):
+    user = models.ForeignKey(AUTH_USER_MODEL, on_delete=models.CASCADE)
+    date = models.DateField()
+    usage_kwh = models.DecimalField(max_digits=10, decimal_places=2)
+    package_usage = models.ForeignKey(PackageUsage, on_delete=models.CASCADE, null=True, blank=True)
+
+    class Meta:
+        unique_together = ('user', 'date')
+
+    def __str__(self):
+        return f"{self.user} - {self.date} - {self.usage_kwh}kWh"
+
+class PackageOverage(models.Model):
+    package_usage = models.ForeignKey(PackageUsage, on_delete=models.CASCADE)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField()
+    is_paid = models.BooleanField(default=False)
+    bill = models.ForeignKey('Billing', on_delete=models.SET_NULL, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.package_usage.user} - {self.date} - {self.amount}"
 
 class BillingMethod(models.Model):
     BILLING_TYPE_CHOICES = [
@@ -82,13 +145,17 @@ class Payments(models.Model):
     
     payment_id = models.AutoField(primary_key=True)
     user_id = models.ForeignKey(AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='payments')
-    bill_id = models.ForeignKey(Billing, on_delete=models.CASCADE)
+    bill_id = models.ForeignKey(Billing, on_delete=models.CASCADE, null=True, blank=True)
     amount_paid = models.DecimalField(max_digits=10, decimal_places=2)
     payment_date = models.DateTimeField(default=timezone.now)
     payment_method = models.ForeignKey(PaymentMethod, on_delete=models.SET_NULL, null=True)
     payment_status = models.CharField(max_length=10, choices=PAYMENT_STATUS_CHOICES)
-    transaction_id = models.CharField(max_length=100, unique=True, blank=True, null=True    )
+    transaction_id = models.CharField(max_length=100, unique=True, blank=True, null=True)
     remarks = models.TextField(blank=True, null=True)
+    payment_type = models.CharField(max_length=20, default='BILL', choices=[
+        ('BILL', 'Bill Payment'),
+        ('PACKAGE', 'Package Subscription')
+    ])
 
     def __str__(self):
         return f"Payment ID: {self.payment_id} - User ID: {self.user_id}"

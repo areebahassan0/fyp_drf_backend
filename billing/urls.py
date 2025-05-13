@@ -4,7 +4,9 @@ from .views import (
     GetUnpaidBillsView, ViewBillByIdView, MakePaymentView,
     GenerateMonthlyBillView, GenerateInstallmentBillsView,
     GetInstallmentPlanView, CreatePaymentIntentView,
-    CreatePaymentMethodView
+    CreatePaymentMethodView, ListPackagesView, SubscribeToPackageView,
+    TrackDailyUsageView, GetPackageUsageView, PackageManagementView,
+    GetUserPackagesView
 )
 
 urlpatterns = [
@@ -30,4 +32,15 @@ urlpatterns = [
     
     # Installment Management
     path('installments/plan/', GetInstallmentPlanView.as_view(), name='get_installment_plan'),
+    
+    # Package Management URLs
+    path('packages/manage/', PackageManagementView.as_view(), name='manage-packages'),
+    path('packages/manage/<int:package_id>/', PackageManagementView.as_view(), name='manage-package-detail'),
+    
+    # Package User URLs
+    path('packages/', ListPackagesView.as_view(), name='list-packages'),
+    path('packages/subscribe/', SubscribeToPackageView.as_view(), name='subscribe-package'),
+    path('packages/usage/track/', TrackDailyUsageView.as_view(), name='track-usage'),
+    path('packages/usage/', GetPackageUsageView.as_view(), name='get-package-usage'),
+    path('packages/user/', GetUserPackagesView.as_view(), name='get-user-packages'),
 ] 

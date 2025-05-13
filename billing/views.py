@@ -3,11 +3,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
-from .models import Payments, Billing, YearlyPayments, Package, BillingMethod, PaymentMethod, UserInstallments
+from .models import Payments, Billing, YearlyPayments, Package, BillingMethod, PaymentMethod, UserInstallments, PackageUsage, DailyUsage, PackageOverage
 from .actions import fetch_payment_history, update_billing_method, fetch_unpaid_bills, get_bill_by_id, process_bill_payment, process_bill_payment, fetch_installment_plan
 from django.db.models import Sum, Q
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from utilities.prediction import get_usage_prediction
 
 from .serializers import (
@@ -15,7 +15,9 @@ from .serializers import (
     PackageSerializer, BillingMethodSerializer, UserInstallmentsSerializer,
     BillingSummarySerializer, PaymentHistoryFilterSerializer,
     ChangeBillingMethodSerializer, CreatePaymentMethodSerializer,
-    ProcessPaymentSerializer,PaymentMethodSerializer
+    ProcessPaymentSerializer,PaymentMethodSerializer,
+    PackageUsageSerializer, DailyUsageSerializer, PackageOverageSerializer, SubscribeToPackageSerializer,
+    PackageManagementSerializer
 )
 from .actions import  fetch_user_billing_summary
 from user.models import User
@@ -25,6 +27,8 @@ from rest_framework.permissions import IsAuthenticated
 
 from utilities.stripe import create_payment_intent
 from .actions import generate_monthly_bill,generate_installment_bills
+from django.utils import timezone
+from datetime import timedelta
 
 # Decorator to ensure the user is logged in
 class GetPaymentHistoryView(APIView):
@@ -390,3 +394,387 @@ class CreatePaymentIntentView(APIView):
                 {"error": str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+class ListPackagesView(APIView):
+    """
+    View to list all active packages
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        packages = Package.objects.filter(is_active=True)
+        if not packages.exists():
+            return Response({
+                "status": "success",
+                "message": "No active packages available",
+                "data": []
+            })
+        
+        serializer = PackageSerializer(packages, many=True)
+        return Response({
+            "status": "success",
+            "message": f"Found {packages.count()} active packages",
+            "data": serializer.data
+        })
+
+class SubscribeToPackageView(APIView):
+    """
+    View to subscribe a user to a package and process payment
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = SubscribeToPackageSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({
+                "status": "error",
+                "message": "Invalid input data",
+                "errors": serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            package = Package.objects.get(
+                id=serializer.validated_data['package_id'],
+                is_active=True
+            )
+        except Package.DoesNotExist:
+            return Response({
+                "status": "error",
+                "message": "Package not found or inactive",
+                "data": None
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            payment_method = PaymentMethod.objects.get(
+                method_id=serializer.validated_data['payment_method_id'],
+                user=request.user
+            )
+        except PaymentMethod.DoesNotExist:
+            return Response({
+                "status": "error",
+                "message": "Payment method not found",
+                "data": None
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Check if user already has an active package
+        active_package = PackageUsage.objects.filter(
+            user=request.user,
+            is_active=True
+        ).first()
+
+        if active_package:
+            return Response({
+                "status": "error",
+                "message": "User already has an active package",
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create payment intent
+        try:
+            intent = create_payment_intent(
+                package.price,
+                metadata={
+                    "user_id": request.user.consumer_no,
+                    "package_id": package.id
+                }
+            )
+        except Exception as e:
+            return Response({
+                "status": "error",
+                "message": f"Failed to create payment intent: {str(e)}",
+                "data": None
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Create package subscription
+        start_date = timezone.now().date()
+        end_date = start_date + timedelta(days=30 * package.duration_months)
+
+        package_usage = PackageUsage.objects.create(
+            user=request.user,
+            package=package,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        # Update billing method
+        billing_method, _ = BillingMethod.objects.get_or_create(user=request.user)
+        billing_method.billing_type = 'PACKAGE'
+        billing_method.package = package
+        billing_method.save()
+
+        # Create payment record
+        payment = Payments.objects.create(
+            user_id=request.user,
+            amount_paid=package.price,
+            payment_method=payment_method,
+            payment_status='PENDING',
+            transaction_id=intent['id'],
+            payment_type='PACKAGE',
+            remarks=f"Package subscription: {package.name}"
+        )
+
+        return Response({
+            "status": "success",
+            "message": "Package subscription created successfully",
+            "data": {
+                "clientSecret": intent['client_secret'],
+                "payment_id": payment.payment_id,
+                "package_usage": PackageUsageSerializer(package_usage).data
+            }
+        })
+
+class TrackDailyUsageView(APIView):
+    """
+    View to track daily usage for a user
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        usage_kwh = request.data.get('usage_kwh')
+        if not usage_kwh:
+            return Response(
+                {"error": "Usage amount is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get active package usage
+        package_usage = PackageUsage.objects.filter(
+            user=request.user,
+            is_active=True
+        ).first()
+
+        if not package_usage:
+            return Response(
+                {"error": "No active package found"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create or update daily usage
+        daily_usage, created = DailyUsage.objects.get_or_create(
+            user=request.user,
+            date=timezone.now().date(),
+            defaults={
+                'usage_kwh': usage_kwh,
+                'package_usage': package_usage
+            }
+        )
+
+        if not created:
+            daily_usage.usage_kwh = usage_kwh
+            daily_usage.save()
+
+        # Update total usage
+        package_usage.total_usage += float(usage_kwh)
+        package_usage.save()
+
+        # Check for overage
+        if package_usage.total_usage > package_usage.package.voltage_included:
+            overage_amount = (package_usage.total_usage - package_usage.package.voltage_included) * package_usage.package.overage_rate
+            PackageOverage.objects.create(
+                package_usage=package_usage,
+                amount=overage_amount,
+                date=timezone.now().date()
+            )
+
+        # Check if notification should be sent
+        if package_usage.should_notify():
+            # TODO: Implement notification sending
+            package_usage.last_notification_sent = timezone.now()
+            package_usage.save()
+
+        return Response(DailyUsageSerializer(daily_usage).data)
+
+class GetPackageUsageView(APIView):
+    """
+    View to get current package usage details
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        package_usage = PackageUsage.objects.filter(
+            user=request.user,
+            is_active=True
+        ).first()
+
+        if not package_usage:
+            return Response({
+                "status": "success",
+                "message": "No active package found for user",
+                "data": None
+            })
+
+        serializer = PackageUsageSerializer(package_usage)
+        return Response({
+            "status": "success",
+            "message": "Active package found",
+            "data": serializer.data
+        })
+
+class PackageManagementView(APIView):
+    """
+    View for managing packages (Create, Read, Update, Delete)
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]  # Only require authentication, no admin check
+
+    def get(self, request, package_id=None):
+        """
+        Get all packages or a specific package
+        """
+        if package_id:
+            try:
+                package = Package.objects.get(id=package_id)
+                serializer = PackageManagementSerializer(package)
+                return Response({
+                    "status": "success",
+                    "message": "Package found",
+                    "data": serializer.data
+                })
+            except Package.DoesNotExist:
+                return Response({
+                    "status": "error",
+                    "message": "Package not found",
+                    "data": None
+                }, status=status.HTTP_404_NOT_FOUND)
+        
+        packages = Package.objects.all()
+        if not packages.exists():
+            return Response({
+                "status": "success",
+                "message": "No packages available",
+                "data": []
+            })
+        
+        serializer = PackageManagementSerializer(packages, many=True)
+        return Response({
+            "status": "success",
+            "message": f"Found {packages.count()} packages",
+            "data": serializer.data
+        })
+
+    def post(self, request):
+        """
+        Create a new package
+        """
+        serializer = PackageManagementSerializer(data=request.data)
+        if serializer.is_valid():
+            package = serializer.save()
+            return Response({
+                "status": "success",
+                "message": "Package created successfully",
+                "data": PackageManagementSerializer(package).data
+            }, status=status.HTTP_201_CREATED)
+        return Response({
+            "status": "error",
+            "message": "Invalid package data",
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, package_id):
+        """
+        Update an existing package
+        """
+        try:
+            package = Package.objects.get(id=package_id)
+        except Package.DoesNotExist:
+            return Response({
+                "status": "error",
+                "message": "Package not found",
+                "data": None
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Check if package is in use
+        active_usage = PackageUsage.objects.filter(
+            package=package,
+            is_active=True
+        ).exists()
+        
+        if active_usage:
+            return Response({
+                "status": "error",
+                "message": "Cannot modify package that is currently in use",
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = PackageManagementSerializer(package, data=request.data)
+        if serializer.is_valid():
+            updated_package = serializer.save()
+            return Response({
+                "status": "success",
+                "message": "Package updated successfully",
+                "data": PackageManagementSerializer(updated_package).data
+            })
+        return Response({
+            "status": "error",
+            "message": "Invalid package data",
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, package_id):
+        """
+        Delete a package
+        """
+        try:
+            package = Package.objects.get(id=package_id)
+        except Package.DoesNotExist:
+            return Response({
+                "status": "error",
+                "message": "Package not found",
+                "data": None
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Check if package is in use
+        active_usage = PackageUsage.objects.filter(
+            package=package,
+            is_active=True
+        ).exists()
+        
+        if active_usage:
+            return Response({
+                "status": "error",
+                "message": "Cannot delete package that is currently in use",
+                "data": None
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        package.delete()
+        return Response({
+            "status": "success",
+            "message": "Package deleted successfully",
+            "data": None
+        }, status=status.HTTP_200_OK)
+
+class GetUserPackagesView(APIView):
+    """
+    View to get all packages a user has subscribed to (both active and historical)
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Get all package usages for the user, ordered by start date (newest first)
+        package_usages = PackageUsage.objects.filter(
+            user=request.user
+        ).order_by('-start_date')
+
+        if not package_usages.exists():
+            return Response({
+                "status": "success",
+                "message": "No package subscriptions found for user",
+                "data": []
+            })
+
+        # Serialize the package usages
+        serializer = PackageUsageSerializer(package_usages, many=True)
+        
+        return Response({
+            "status": "success",
+            "message": f"Found {package_usages.count()} package subscriptions",
+            "data": {
+                "active_package": serializer.data[0] if package_usages.filter(is_active=True).exists() else None,
+                "package_history": serializer.data
+            }
+        })
